@@ -1,0 +1,18 @@
+# config.yaml format:
+
+# URL of the remote store
+remote_store_url: https://api.testnet.iota.cafe:443
+# Database connection URL
+db_url: http://127.0.0.1:5432/
+# Path to the checkpoints
+checkpoints_path: <path>
+# DeepBook package ID
+deepbook_package_id: 0xd5b5294542b8ca6dd705977fce9b3bcd546f7a1588898346d35833365149e6b1
+# DeepBook genesis checkpoint
+deepbook_genesis_checkpoint: 18610675
+# Number of concurrent operations
+concurrency: 1
+# Client metric URL
+# metric_url: <url>
+# Client metric port
+# metric_port: <port>
