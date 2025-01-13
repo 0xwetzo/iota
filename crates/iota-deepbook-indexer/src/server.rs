@@ -30,8 +30,9 @@ use iota_types::{
     base_types::{ObjectID, ObjectRef, IotaAddress},
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{Argument, CallArg, Command, ObjectArg, ProgrammableMoveCall, TransactionKind},
-    type_input::TypeInput,
+    // type_input::TypeInput,
     TypeTag,
+    Identifier,
 };
 
 pub const IOTA_MAINNET_URL: &str = "https://fullnode.mainnet.iota.io:443";
@@ -1000,13 +1001,15 @@ async fn orderbook(
     let clock_input = CallArg::Object(ObjectArg::ImmOrOwnedObject(iota_clock_object_ref));
     ptb.input(clock_input)?;
 
-    let base_coin_type = parse_type_input(&base_asset_id)?;
-    let quote_coin_type = parse_type_input(&quote_asset_id)?;
+    // let base_coin_type = parse_type_input(&base_asset_id)?;
+    // let quote_coin_type = parse_type_input(&quote_asset_id)?;
+    let base_coin_type = TypeTag::from_str(&base_asset_id).unwrap();
+    let quote_coin_type = TypeTag::from_str(&quote_asset_id).unwrap();
 
     let package = ObjectID::from_hex_literal(DEEPBOOK_PACKAGE_ID)
         .map_err(|e| DeepBookError::InternalError(format!("Invalid pool ID: {}", e)))?;
-    let module = LEVEL2_MODULE.to_string();
-    let function = LEVEL2_FUNCTION.to_string();
+    let module = Identifier::new(LEVEL2_MODULE.to_string()).unwrap();
+    let function = Identifier::new(LEVEL2_FUNCTION.to_string()).unwrap();
 
     ptb.command(Command::MoveCall(Box::new(ProgrammableMoveCall {
         package,
@@ -1159,8 +1162,8 @@ async fn deep_supply() -> Result<Json<u64>, DeepBookError> {
     let package = ObjectID::from_hex_literal(DEEP_TOKEN_PACKAGE_ID).map_err(|e| {
         DeepBookError::InternalError(format!("Invalid deep token package ID: {}", e))
     })?;
-    let module = DEEP_SUPPLY_MODULE.to_string();
-    let function = DEEP_SUPPLY_FUNCTION.to_string();
+    let module = Identifier::new(DEEP_SUPPLY_MODULE.to_string()).unwrap();
+    let function = Identifier::new(DEEP_SUPPLY_FUNCTION.to_string()).unwrap();
 
     ptb.command(Command::MoveCall(Box::new(ProgrammableMoveCall {
         package,
@@ -1240,7 +1243,7 @@ async fn get_net_deposits(
     Ok(Json(net_deposits))
 }
 
-fn parse_type_input(type_str: &str) -> Result<TypeInput, DeepBookError> {
-    let type_tag = TypeTag::from_str(type_str)?;
-    Ok(TypeInput::from(type_tag))
-}
+// fn parse_type_input(type_str: &str) -> Result<TypeInput, DeepBookError> {
+//     let type_tag = TypeTag::from_str(type_str)?;
+//     Ok(TypeInput::from(type_tag))
+// }

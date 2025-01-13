@@ -5,7 +5,23 @@ use prometheus::{
     register_int_counter_vec_with_registry, register_int_counter_with_registry,
     register_int_gauge_vec_with_registry, IntCounter, IntCounterVec, IntGaugeVec, Registry,
 };
-use iota_indexer_builder::metrics::IndexerMetricProvider;
+
+pub trait IndexerMetricProvider: Send + Sync {
+    fn get_tasks_latest_retrieved_checkpoints(&self) -> &IntGaugeVec;
+
+    fn get_tasks_remaining_checkpoints_metric(&self) -> &IntGaugeVec;
+
+    fn get_tasks_processed_checkpoints_metric(&self) -> &IntCounterVec;
+
+    fn get_inflight_live_tasks_metrics(&self) -> &IntGaugeVec;
+
+    fn boxed(self) -> Box<dyn IndexerMetricProvider>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct DeepBookIndexerMetrics {

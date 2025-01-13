@@ -17,8 +17,8 @@ use iota_deepbook_indexer::postgres_manager::get_connection_pool;
 use iota_deepbook_indexer::server::run_server;
 use iota_deepbook_indexer::iota_deepbook_indexer::PgDeepbookPersistent;
 use iota_deepbook_indexer::iota_deepbook_indexer::IotaDeepBookDataMapper;
+use iota_deepbook_indexer::progress::{OutOfOrderSaveAfterDurationPolicy, ProgressSavingPolicy};
 use iota_indexer_builder::indexer_builder::IndexerBuilder;
-use iota_indexer_builder::progress::{OutOfOrderSaveAfterDurationPolicy, ProgressSavingPolicy};
 use iota_indexer_builder::iota_datasource::IotaCheckpointDatasource;
 use iota_sdk::IotaClientBuilder;
 use iota_types::base_types::ObjectID;
@@ -75,15 +75,15 @@ async fn main() -> Result<()> {
     );
     let iota_checkpoint_datasource = IotaCheckpointDatasource::new(
         config.remote_store_url,
-        iota_client,
+        // iota_client,
         config.concurrency as usize,
         config
             .checkpoints_path
             .map(|p| p.into())
             .unwrap_or(tempfile::tempdir()?.into_path()),
-        config.deepbook_genesis_checkpoint,
+        // config.deepbook_genesis_checkpoint,
         ingestion_metrics.clone(),
-        Box::new(indexer_meterics.clone()),
+        // Box::new(indexer_meterics.clone()),
     );
 
     let service_address =
@@ -98,9 +98,23 @@ async fn main() -> Result<()> {
             package_id: ObjectID::from_hex_literal(&config.deepbook_package_id.clone())
                 .unwrap_or_else(|err| panic!("Failed to parse deepbook package ID: {}", err)),
         },
-        datastore,
     )
-    .build();
+    .build(
+        0, // @note will begin at latest processed checkpoint if set to 0
+        config.deepbook_genesis_checkpoint,
+        datastore
+    );
+    // let indexer = IndexerBuilder::new(
+    //     "IotaDeepBookIndexer",
+    //     iota_checkpoint_datasource,
+    //     IotaDeepBookDataMapper {
+    //         metrics: indexer_meterics.clone(),
+    //         package_id: ObjectID::from_hex_literal(&config.deepbook_package_id.clone())
+    //             .unwrap_or_else(|err| panic!("Failed to parse deepbook package ID: {}", err)),
+    //     },
+    //     datastore,
+    // )
+    // .build();
     indexer.start().await?;
 
     Ok(())

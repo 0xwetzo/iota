@@ -11,3 +11,4 @@ pub mod schema;
 pub mod server;
 pub mod iota_deepbook_indexer;
 pub mod types;
+pub mod progress;

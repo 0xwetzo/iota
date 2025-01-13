@@ -9,14 +9,13 @@ use diesel::{OptionalExtension, QueryDsl, SelectableHelper};
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::AsyncConnection;
 use diesel_async::RunQueryDsl;
-use iota_indexer_builder::progress::ProgressSavingPolicy;
 use iota_types::base_types::ObjectID;
 use iota_types::transaction::{Command, TransactionDataAPI};
 use tracing::info;
 
 use iota_indexer_builder::indexer_builder::{DataMapper, IndexerProgressStore, Persistent};
 use iota_indexer_builder::iota_datasource::CheckpointTxnData;
-use iota_indexer_builder::{Task, Tasks, LIVE_TASK_TARGET_CHECKPOINT};
+use iota_indexer_builder::{Task, Tasks}; //, LIVE_TASK_TARGET_CHECKPOINT};
 use iota_types::effects::TransactionEffectsAPI;
 use iota_types::event::Event;
 use iota_types::execution_status::ExecutionStatus;
@@ -39,6 +38,9 @@ use crate::types::{
     Proposals, Rebates, Stakes, IotaTxnError, TradeParamsUpdate, Votes,
 };
 use crate::{models, schema};
+use crate::progress::ProgressSavingPolicy;
+
+const LIVE_TASK_TARGET_CHECKPOINT: i64 = i64::MAX;
 
 /// Persistent layer impl
 #[derive(Clone)]
@@ -233,44 +235,54 @@ impl IndexerProgressStore for PgDeepbookPersistent {
             .checkpoint as u64)
     }
 
+    // @note seems not to be used
+    // async fn save_progress(
+    //     &mut self,
+    //     task: &Task,
+    //     checkpoint_numbers: &[u64],
+    // ) -> anyhow::Result<Option<u64>> {
+    //     if checkpoint_numbers.is_empty() {
+    //         return Ok(None);
+    //     }
+    //     let task_name = task.task_name.clone();
+    //     if let Some(checkpoint_to_save) = self
+    //         .save_progress_policy
+    //         .cache_progress(task, checkpoint_numbers)
+    //     {
+    //         let mut conn = self.pool.get().await?;
+    //         diesel::insert_into(schema::progress_store::table)
+    //             .values(&models::ProgressStore {
+    //                 task_name,
+    //                 checkpoint: checkpoint_to_save as i64,
+    //                 // Target checkpoint and timestamp will only be written for new entries
+    //                 target_checkpoint: i64::MAX,
+    //                 // Timestamp is defaulted to current time in DB if None
+    //                 timestamp: None,
+    //             })
+    //             .on_conflict(dsl::task_name)
+    //             .do_update()
+    //             .set((
+    //                 columns::checkpoint.eq(checkpoint_to_save as i64),
+    //                 columns::timestamp.eq(now),
+    //             ))
+    //             .execute(&mut conn)
+    //             .await?;
+    //         // TODO: add metrics here
+    //         return Ok(Some(checkpoint_to_save));
+    //     }
+    //     Ok(None)
+    // }
+
+    // @note created only to match implementation
     async fn save_progress(
         &mut self,
-        task: &Task,
-        checkpoint_numbers: &[u64],
-    ) -> anyhow::Result<Option<u64>> {
-        if checkpoint_numbers.is_empty() {
-            return Ok(None);
-        }
-        let task_name = task.task_name.clone();
-        if let Some(checkpoint_to_save) = self
-            .save_progress_policy
-            .cache_progress(task, checkpoint_numbers)
-        {
-            let mut conn = self.pool.get().await?;
-            diesel::insert_into(schema::progress_store::table)
-                .values(&models::ProgressStore {
-                    task_name,
-                    checkpoint: checkpoint_to_save as i64,
-                    // Target checkpoint and timestamp will only be written for new entries
-                    target_checkpoint: i64::MAX,
-                    // Timestamp is defaulted to current time in DB if None
-                    timestamp: None,
-                })
-                .on_conflict(dsl::task_name)
-                .do_update()
-                .set((
-                    columns::checkpoint.eq(checkpoint_to_save as i64),
-                    columns::timestamp.eq(now),
-                ))
-                .execute(&mut conn)
-                .await?;
-            // TODO: add metrics here
-            return Ok(Some(checkpoint_to_save));
-        }
-        Ok(None)
+        task_name: String,
+        checkpoint_numbers: u64,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 
-    async fn get_ongoing_tasks(&self, prefix: &str) -> Result<Tasks, anyhow::Error> {
+    async fn tasks(&self, prefix: &str) -> Result<Vec<Task>, anyhow::Error> {
         let mut conn = self.pool.get().await?;
         // get all unfinished tasks
         let cp: Vec<models::ProgressStore> = dsl::progress_store
@@ -281,28 +293,30 @@ impl IndexerProgressStore for PgDeepbookPersistent {
             .load(&mut conn)
             .await?;
         let tasks = cp.into_iter().map(|d| d.into()).collect();
-        Ok(Tasks::new(tasks)?)
+        Ok(tasks)
+        // Ok(Tasks::new(tasks)?)
     }
 
-    async fn get_largest_indexed_checkpoint(&self, prefix: &str) -> Result<Option<u64>, Error> {
-        let mut conn = self.pool.get().await?;
-        let cp = dsl::progress_store
-            .select(columns::checkpoint)
-            // TODO: using like could be error prone, change the progress store schema to stare the task name properly.
-            .filter(columns::task_name.like(format!("{prefix} - %")))
-            .filter(columns::target_checkpoint.eq(i64::MAX))
-            .first::<i64>(&mut conn)
-            .await
-            .optional()?;
+    // @note seems not to be used
+    // async fn get_largest_indexed_checkpoint(&self, prefix: &str) -> Result<Option<u64>, Error> {
+    //     let mut conn = self.pool.get().await?;
+    //     let cp = dsl::progress_store
+    //         .select(columns::checkpoint)
+    //         // TODO: using like could be error prone, change the progress store schema to stare the task name properly.
+    //         .filter(columns::task_name.like(format!("{prefix} - %")))
+    //         .filter(columns::target_checkpoint.eq(i64::MAX))
+    //         .first::<i64>(&mut conn)
+    //         .await
+    //         .optional()?;
 
-        if let Some(cp) = cp {
-            Ok(Some(cp as u64))
-        } else {
-            // Use the largest backfill target checkpoint as a fallback
-            self.get_largest_backfill_task_target_checkpoint(prefix)
-                .await
-        }
-    }
+    //     if let Some(cp) = cp {
+    //         Ok(Some(cp as u64))
+    //     } else {
+    //         // Use the largest backfill target checkpoint as a fallback
+    //         self.get_largest_backfill_task_target_checkpoint(prefix)
+    //             .await
+    //     }
+    // }
 
     async fn register_task(
         &mut self,
@@ -324,31 +338,32 @@ impl IndexerProgressStore for PgDeepbookPersistent {
         Ok(())
     }
 
+    // @note seems not to be used
     /// Register a live task to progress store with a start checkpoint.
-    async fn register_live_task(
-        &mut self,
-        task_name: String,
-        start_checkpoint: u64,
-    ) -> Result<(), anyhow::Error> {
-        let mut conn = self.pool.get().await?;
-        diesel::insert_into(schema::progress_store::table)
-            .values(models::ProgressStore {
-                task_name,
-                checkpoint: start_checkpoint as i64,
-                target_checkpoint: LIVE_TASK_TARGET_CHECKPOINT,
-                // Timestamp is defaulted to current time in DB if None
-                timestamp: None,
-            })
-            .execute(&mut conn)
-            .await?;
-        Ok(())
-    }
+    // async fn register_live_task(
+    //     &mut self,
+    //     task_name: String,
+    //     checkpoint: u64,
+    // ) -> Result<(), anyhow::Error> {
+    //     let mut conn = self.pool.get().await?;
+    //     diesel::insert_into(schema::progress_store::table)
+    //         .values(models::ProgressStore {
+    //             task_name,
+    //             checkpoint: checkpoint as i64,
+    //             target_checkpoint: LIVE_TASK_TARGET_CHECKPOINT,
+    //             // Timestamp is defaulted to current time in DB if None
+    //             timestamp: None,
+    //         })
+    //         .execute(&mut conn)
+    //         .await?;
+    //     Ok(())
+    // }
 
     async fn update_task(&mut self, task: Task) -> Result<(), anyhow::Error> {
         let mut conn = self.pool.get().await?;
         diesel::update(dsl::progress_store.filter(columns::task_name.eq(task.task_name)))
             .set((
-                columns::checkpoint.eq(task.start_checkpoint as i64),
+                columns::checkpoint.eq(task.checkpoint as i64),
                 columns::target_checkpoint.eq(task.target_checkpoint as i64),
                 columns::timestamp.eq(now),
             ))

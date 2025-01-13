@@ -5,12 +5,14 @@ use diesel::data_types::PgTimestamp;
 use diesel::{Identifiable, Insertable, Queryable, QueryableByName, Selectable};
 
 use serde::Serialize;
-use iota_indexer_builder::{Task, LIVE_TASK_TARGET_CHECKPOINT};
+use iota_indexer_builder::Task; // {Task, LIVE_TASK_TARGET_CHECKPOINT};
 
 use crate::schema::{
     balances, balances_summary, flashloans, order_fills, order_updates, pool_prices, pools,
     progress_store, proposals, rebates, stakes, iota_error_transactions, trade_params_update, votes,
 };
+
+const LIVE_TASK_TARGET_CHECKPOINT: i64 = i64::MAX;
 
 #[derive(Queryable, Selectable, Insertable, Identifiable, Debug)]
 #[diesel(table_name = order_updates, primary_key(event_digest))]
@@ -244,11 +246,12 @@ impl From<ProgressStore> for Task {
     fn from(value: ProgressStore) -> Self {
         Self {
             task_name: value.task_name,
-            start_checkpoint: value.checkpoint as u64,
+            checkpoint: value.checkpoint as u64,
             target_checkpoint: value.target_checkpoint as u64,
             // Ok to unwrap, timestamp is defaulted to now() in database
             timestamp: value.timestamp.expect("Timestamp not set").0 as u64,
-            is_live_task: value.target_checkpoint == LIVE_TASK_TARGET_CHECKPOINT,
+            // @note removed because not defined in builder
+            // is_live_task: value.target_checkpoint == LIVE_TASK_TARGET_CHECKPOINT,
         }
     }
 }
